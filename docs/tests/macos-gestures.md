@@ -1,7 +1,8 @@
 # Native macOS Dock gesture forwarding
 
-Status: implementation and local native checks only; two-Mac acceptance is still
-required before treating this as a working gesture passthrough feature.
+Status: client/server release builds and DMG packaging succeeded in GitHub
+Actions, with tests skipped at the user's request. Two-Mac gesture acceptance
+has not been performed.
 
 ## Behavior and supported scope
 
@@ -71,8 +72,10 @@ packets, ownership, phase ordering, completion and watchdog cancellation. Swift
 typechecking covers the real Cocoa capture implementation, without Flutter.
 These native checks passed locally on macOS 26; CGEvent progress is stored with
 Float32 precision, so the harness compares progress using a tolerance.
-Full Rust/Flutter builds are not validated here: Rust's offline dependency cache
-lacks `hwcodec`, and the Flutter SDK is not installed in the current shell.
+The local shell lacked the Flutter SDK and a complete Rust dependency cache.
+Full client/server engine and application release builds subsequently succeeded
+in [GitHub Actions](https://github.com/noxhsxrk/remotedisplay/actions/runs/41055054548),
+with tests skipped at the user's request. Both DMGs are attached to v1.0.16.
 
 ## Two-Mac acceptance checklist
 

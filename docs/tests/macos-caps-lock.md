@@ -51,5 +51,8 @@ harness using the production conversion functions with stand-ins for dependency
 types and traps for unexpected fallback/live-keyboard calls. This checks conversion
 logic, not compatibility with the real dependency types or host event injection.
 Both modified Rust files parse with `rustfmt`, and `git diff --check` passes.
-Full Cargo checks are blocked by the missing offline `hwcodec` Git dependency.
+The local offline Cargo check was blocked by a missing `hwcodec` Git dependency.
+Full client/server engine and application release builds subsequently succeeded
+in [GitHub Actions](https://github.com/noxhsxrk/remotedisplay/actions/runs/41055054548),
+with tests skipped at the user's request.
 End-to-end language switching has not been verified on two Macs.
