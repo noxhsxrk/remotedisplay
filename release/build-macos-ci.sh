@@ -28,12 +28,12 @@ git -C "$VCPKG_ROOT" remote add origin https://github.com/microsoft/vcpkg.git
 git -C "$VCPKG_ROOT" fetch --depth 1 origin 120deac3062162151622ca4860575a33844ba10b
 git -C "$VCPKG_ROOT" checkout --detach FETCH_HEAD
 bash "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
-# Classic mode avoids building unused platform/FFmpeg dependencies. hwcodec
-# obtains its FFmpeg build through the engine's pinned hwcodec dependency.
+# Use the engine's FFmpeg overlay too: when VCPKG_ROOT is set, hwcodec links
+# against that installation rather than downloading its external libraries.
 (
   cd "$VCPKG_ROOT"
   ./vcpkg install aom:arm64-osx opus:arm64-osx libvpx:arm64-osx \
-    libyuv:arm64-osx libjpeg-turbo:arm64-osx \
+    libyuv:arm64-osx libjpeg-turbo:arm64-osx ffmpeg:arm64-osx \
     --overlay-ports="$ENGINE/res/vcpkg"
 )
 echo "::endgroup::"

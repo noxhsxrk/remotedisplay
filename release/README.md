@@ -11,6 +11,27 @@
 Binaries go to **GitHub Releases** of the (private) repo, tag `v<version>`. No
 binaries in git (`release/out/` is in .gitignore).
 
+## Fork builds with GitHub Actions (no signing certificate)
+
+The `Build macOS DMGs` workflow builds the Apple-silicon client and server,
+generates the Flutter–Rust bridge, ad-hoc signs both apps, packages DMGs and
+attaches them to an existing release. It deliberately does not run tests or
+notarize the apps. It does not require the original maintainer's certificates.
+
+```sh
+gh workflow run macos-release.yml --repo noxhsxrk/remotedisplay \
+  --ref main -f release_tag=v1.0.16
+gh run list --repo noxhsxrk/remotedisplay --workflow macos-release.yml
+```
+
+The release tag must match the version in `client/pubspec.yaml`. The workflow
+builds its selected source ref and records the exact source commit in the
+attached `RemoteDisplay-<ver>-build-info.txt`; it does not move an existing tag.
+The release also receives `SHA256SUMS.txt` and the two standard DMG filenames.
+The build requires GitHub Actions enabled and release write permission. The
+original local release procedure below remains available for Developer ID
+signing and notarization.
+
 ## Artifacts and how they're produced
 
 | Artifact | Built on | Command |
