@@ -18,7 +18,10 @@ fi
 : "${VCPKG_ROOT:?Set VCPKG_ROOT}"
 : "${LIBCLANG_PATH:?Set LIBCLANG_PATH}"
 mkdir -p "$OUT"
+CLIENT_APP="$ROOT/client/build/macos/Build/Products/Release/RemoteDisplay.app"
+SERVER_APP="$ROOT/server-mac/.build/Remote Display Server.app"
 
+build_deps() {
 echo "::group::Native codec dependencies"
 git init "$VCPKG_ROOT"
 git -C "$VCPKG_ROOT" remote add origin https://github.com/microsoft/vcpkg.git
@@ -34,7 +37,9 @@ bash "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
     --overlay-ports="$ENGINE/res/vcpkg"
 )
 echo "::endgroup::"
+}
 
+build_bridge() {
 echo "::group::Generate Flutter Rust bridge"
 cargo install cargo-expand --version 1.0.95 --locked
 cargo install flutter_rust_bridge_codegen --version 1.80.1 --features uuid --locked
@@ -51,7 +56,9 @@ cargo install flutter_rust_bridge_codegen --version 1.80.1 --features uuid --loc
 )
 cp "$ENGINE/flutter/macos/Runner/bridge_generated.h" "$ROOT/client/macos/Runner/bridge_generated.h"
 echo "::endgroup::"
+}
 
+build_engine() {
 echo "::group::Build both Rust engines"
 (
   cd "$ENGINE"
@@ -60,28 +67,31 @@ echo "::group::Build both Rust engines"
   cargo build --locked --release --features hwcodec --bin rustdesk
 )
 echo "::endgroup::"
+}
 
+build_client() {
 echo "::group::Build and ad-hoc sign client"
 (
   cd "$ROOT/client"
   flutter pub get
   SIGN_ID=- bash build-sign.sh
 )
-CLIENT_APP="$ROOT/client/build/macos/Build/Products/Release/RemoteDisplay.app"
 echo "::endgroup::"
+}
 
+build_server() {
 echo "::group::Build and ad-hoc sign server"
 (
   cd "$ROOT/server-mac"
   make bundle ENGINE_BIN="$ENGINE/target/release/rustdesk"
 )
-SERVER_APP="$ROOT/server-mac/.build/Remote Display Server.app"
 codesign --force --sign - --options runtime --entitlements "$ROOT/server-mac/Entitlements.plist" \
   "$SERVER_APP/Contents/MacOS/remotedisplayd"
 codesign --force --sign - --options runtime --entitlements "$ROOT/server-mac/Entitlements.plist" \
   "$SERVER_APP/Contents/MacOS/RemoteDisplayServer"
 codesign --force --sign - --options runtime --entitlements "$ROOT/server-mac/Entitlements.plist" "$SERVER_APP"
 echo "::endgroup::"
+}
 
 make_dmg() {
   local app="$1" bundle_name="$2" output="$3" stage
@@ -95,6 +105,7 @@ make_dmg() {
   rm -rf "$stage"
 }
 
+build_package() {
 echo "::group::Package DMGs"
 make_dmg "$CLIENT_APP" "Remote Display" "$OUT/RemoteDisplay-$VER-macos-client.dmg"
 make_dmg "$SERVER_APP" "Remote Display Server" "$OUT/RemoteDisplay-Server-$VER-macos.dmg"
@@ -112,3 +123,15 @@ make_dmg "$SERVER_APP" "Remote Display Server" "$OUT/RemoteDisplay-Server-$VER-m
   shasum -a 256 ./*.dmg > SHA256SUMS.txt
 )
 echo "::endgroup::"
+}
+
+case "${1:-all}" in
+  deps) build_deps ;;
+  bridge) build_bridge ;;
+  engine) build_engine ;;
+  client) build_client ;;
+  server) build_server ;;
+  package) build_package ;;
+  all) build_deps; build_bridge; build_engine; build_client; build_server; build_package ;;
+  *) echo "Unknown build phase: $1" >&2; exit 2 ;;
+esac

@@ -59,6 +59,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
         with:
           toolchain: '1.89.0'
+          components: rustfmt
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
@@ -73,8 +74,23 @@ jobs:
           key: macos-arm64-vcpkg-120deac-${{ hashFiles('engine/rustdesk/res/vcpkg/**') }}-${{ github.run_id }}
           restore-keys: macos-arm64-vcpkg-120deac-${{ hashFiles('engine/rustdesk/res/vcpkg/**') }}-
 
-      - name: Build client and server DMGs (no tests)
-        run: bash release/build-macos-ci.sh
+      - name: Build native codec dependencies
+        run: bash release/build-macos-ci.sh deps
+
+      - name: Generate Flutter Rust bridge
+        run: bash release/build-macos-ci.sh bridge
+
+      - name: Compile client and server engines
+        run: bash release/build-macos-ci.sh engine
+
+      - name: Build macOS client
+        run: bash release/build-macos-ci.sh client
+
+      - name: Build macOS server
+        run: bash release/build-macos-ci.sh server
+
+      - name: Package DMGs (tests skipped)
+        run: bash release/build-macos-ci.sh package
 
       - name: Preserve codec builds when a later packaging step fails
         if: always()
