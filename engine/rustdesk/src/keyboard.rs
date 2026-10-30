@@ -621,7 +621,10 @@ fn start_grab_loop() {
                 #[cfg(target_os = "macos")]
                 if key == Key::CapsLock
                     && KEYBOARD_HOOKED.load(Ordering::SeqCst)
-                    && get_peer_platform().to_lowercase() == OS_LOWER_MACOS
+                    && get_peer_platform()
+                        .split_whitespace()
+                        .collect::<String>()
+                        .eq_ignore_ascii_case(OS_LOWER_MACOS)
                 {
                     client::process_event(&get_keyboard_mode(), &event, None);
                 }
