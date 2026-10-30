@@ -37,6 +37,13 @@ jobs:
           brew install llvm@18 cmake ninja autoconf automake libtool pkg-config
           if ! command -v pod >/dev/null; then brew install cocoapods; fi
           sudo softwareupdate --install-rosetta --agree-to-license
+          # The pinned aom port requires NASM even for an ARM build. Keep the
+          # compatible 2.x tool used by the engine's own macOS workflow.
+          curl --fail --location --retry 3 \
+            https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/macosx/nasm-2.16.03-macosx.zip \
+            --output "$RUNNER_TEMP/nasm.zip"
+          unzip -q "$RUNNER_TEMP/nasm.zip" -d "$RUNNER_TEMP/nasm"
+          echo "$RUNNER_TEMP/nasm/nasm-2.16.03" >> "$GITHUB_PATH"
           echo "VCPKG_ROOT=$RUNNER_TEMP/remotedisplay-vcpkg" >> "$GITHUB_ENV"
           echo "LIBCLANG_PATH=$(brew --prefix llvm@18)/lib" >> "$GITHUB_ENV"
           echo "SDKROOT=$(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
@@ -63,10 +70,20 @@ jobs:
           path: |
             ~/Library/Caches/vcpkg/archives
             ~/.cache/vcpkg/archives
-          key: macos-arm64-vcpkg-120deac-${{ hashFiles('engine/rustdesk/res/vcpkg/**') }}
+          key: macos-arm64-vcpkg-120deac-${{ hashFiles('engine/rustdesk/res/vcpkg/**') }}-${{ github.run_id }}
+          restore-keys: macos-arm64-vcpkg-120deac-${{ hashFiles('engine/rustdesk/res/vcpkg/**') }}-
 
       - name: Build client and server DMGs (no tests)
         run: bash release/build-macos-ci.sh
+
+      - name: Preserve codec builds when a later packaging step fails
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/Library/Caches/vcpkg/archives
+            ~/.cache/vcpkg/archives
+          key: macos-arm64-vcpkg-120deac-${{ hashFiles('engine/rustdesk/res/vcpkg/**') }}-${{ github.run_id }}
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
