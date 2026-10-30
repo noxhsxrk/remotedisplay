@@ -1985,6 +1985,39 @@ fn session_send_touch_event(
 
 pub fn session_send_pointer(session_id: SessionID, msg: String) {
     if let Ok(m) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&msg) {
+        // remotedisplay: reuse the existing FFI entrypoint for native gestures.
+        #[cfg(target_os = "macos")]
+        if m.get("k").and_then(|v| v.as_str()) == Some("macos_gesture") {
+            if let (Some(v), Some(session)) =
+                (m.get("v"), sessions::get_session_by_session_id(&session_id))
+            {
+                if let (Some(axis), Some(phase), Some(progress), Some(velocity), Some(inverted)) = (
+                    v.get("axis").and_then(|v| v.as_u64()),
+                    v.get("phase").and_then(|v| v.as_u64()),
+                    v.get("progress").and_then(|v| v.as_f64()),
+                    v.get("velocity").and_then(|v| v.as_f64()),
+                    v.get("inverted").and_then(|v| v.as_bool()),
+                ) {
+                    if (1..=3).contains(&axis)
+                        && matches!(phase, 1 | 2 | 4 | 8)
+                        && progress.is_finite()
+                        && progress.abs() <= 16.0
+                        && velocity.is_finite()
+                        && velocity.abs() <= 10000.0
+                    {
+                        session.send_macos_gesture(MacosGestureEvent {
+                            axis: axis as u32,
+                            phase: phase as u32,
+                            progress,
+                            velocity,
+                            inverted,
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+            return;
+        }
         let alt = m.get("alt").is_some();
         let ctrl = m.get("ctrl").is_some();
         let shift = m.get("shift").is_some();

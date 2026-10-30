@@ -58,7 +58,34 @@ fn get_update_temp_dir_string() -> String {
 /// and cursor positioning/clipping operations.
 static CG_CURSOR_MUTEX: Mutex<()> = Mutex::new(());
 
+// remotedisplay: these run on input_service's main dispatch queue.
+pub fn remote_gestures_supported() -> bool {
+    unsafe { RDGesturesSupported() }
+}
+
+pub fn post_remote_gesture(conn: i32, gesture: &hbb_common::message_proto::MacosGestureEvent) {
+    unsafe {
+        RDPostRemoteGesture(
+            conn,
+            gesture.axis,
+            gesture.phase,
+            gesture.progress,
+            gesture.velocity,
+            gesture.inverted,
+        );
+    }
+}
+
 extern "C" {
+    fn RDGesturesSupported() -> bool;
+    fn RDPostRemoteGesture(
+        conn: i32,
+        axis: u32,
+        phase: u32,
+        progress: f64,
+        velocity: f64,
+        inverted: bool,
+    );
     fn CGSCurrentCursorSeed() -> i32;
     fn CGEventCreate(r: *const c_void) -> *const c_void;
     fn CGEventGetLocation(e: *const c_void) -> CGPoint;

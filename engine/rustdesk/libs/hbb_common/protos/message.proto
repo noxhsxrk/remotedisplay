@@ -185,9 +185,19 @@ message TouchEvent {
   }
 }
 
+// remotedisplay: structured Dock gestures, never arbitrary serialized CGEvents.
+message MacosGestureEvent {
+  uint32 axis = 1; // 1: Spaces, 2: Mission Control/App Expose, 3: system pinch
+  uint32 phase = 2; // 1: began, 2: changed, 4: ended, 8: cancelled
+  double progress = 3;
+  double velocity = 4;
+  bool inverted = 5;
+}
+
 message PointerDeviceEvent {
   oneof union {
     TouchEvent touch_event = 1;
+    MacosGestureEvent macos_gesture = 3;
   }
   repeated ControlKey modifiers = 2;
 }

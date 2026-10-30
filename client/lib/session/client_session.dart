@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:flutter_hbb/consts.dart';
@@ -80,6 +81,21 @@ class _ClientSessionPageState extends State<ClientSessionPage> {
       isSharedPassword: params['isSharedPassword'] as bool?,
     );
 
+    if (isMacOS) {
+      _gestureChannel.setMethodCallHandler((call) async {
+        if (call.method == 'onGesture' && mounted) {
+          bind.sessionSendPointer(
+            sessionId: _remotePage.ffi.sessionId,
+            msg: jsonEncode({'k': 'macos_gesture', 'v': call.arguments}),
+          );
+        }
+      });
+      // The native lease expires if this isolate stops or the window closes.
+      _gestureTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+        _syncGestureCapture();
+      });
+    }
+
     final windowId = params['windowId'];
     if (windowId != null) {
       WindowController.fromWindowId(windowId)
@@ -125,7 +141,43 @@ class _ClientSessionPageState extends State<ClientSessionPage> {
   }
 
   Timer? _watch;
+  static const _gestureChannel = MethodChannel('remotedisplay/gestures');
+  Timer? _gestureTimer;
+  bool _pointerOverRemote = false;
+  bool _gestureCallPending = false;
+  String? _gestureStatus;
   int? _titledDisplay;
+
+  Future<void> _syncGestureCapture({bool closing = false}) async {
+    if (!isMacOS || _gestureCallPending) return;
+    _gestureCallPending = true;
+    try {
+      var enabled = false;
+      if (!closing && mounted && _pointerOverRemote) {
+        final ffi = _remotePage.ffi;
+        final input = ffi.inputModel;
+        enabled = input.keyboardPerm &&
+            !input.isViewOnly &&
+            !input.isViewCamera &&
+            ffi.ffiModel.pi.platformAdditions['macos_gestures_v1'] == true;
+      }
+      final status = await _gestureChannel.invokeMethod<String>(
+          'setCapture', {'enabled': enabled});
+      if (status != _gestureStatus) {
+        _gestureStatus = status;
+        if (enabled && status != 'active' && status != 'inactive') {
+          debugPrint('[gestures] capture unavailable: $status');
+        }
+      }
+    } on PlatformException catch (e) {
+      debugPrint('[gestures] ${e.message}');
+    } on MissingPluginException {
+      // A client binary built before the native gesture channel was added.
+      _gestureTimer?.cancel();
+    } finally {
+      _gestureCallPending = false;
+    }
+  }
 
   Future<void> _tick() async {
     if (!mounted) return;
@@ -149,6 +201,12 @@ class _ClientSessionPageState extends State<ClientSessionPage> {
   @override
   void dispose() {
     _watch?.cancel();
+    _gestureTimer?.cancel();
+    if (isMacOS) {
+      // Native close/focus observers also cancel any in-flight transition.
+      unawaited(_syncGestureCapture(closing: true));
+      _gestureChannel.setMethodCallHandler(null);
+    }
     super.dispose();
   }
 
@@ -158,7 +216,17 @@ class _ClientSessionPageState extends State<ClientSessionPage> {
       backgroundColor: Theme.of(context).colorScheme.background,
       body: Stack(
         children: [
-          _remotePage,
+          MouseRegion(
+            onEnter: (_) {
+              _pointerOverRemote = true;
+              unawaited(_syncGestureCapture());
+            },
+            onExit: (_) {
+              _pointerOverRemote = false;
+              unawaited(_syncGestureCapture());
+            },
+            child: _remotePage,
+          ),
           SessionToolbar(peerId: _peerId, getFfi: () => _remotePage.ffi),
         ],
       ),

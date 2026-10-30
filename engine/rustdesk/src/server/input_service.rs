@@ -1020,6 +1020,12 @@ pub fn handle_pointer_(evt: &PointerDeviceEvent, conn: i32) {
     }
 
     match &evt.union {
+        #[cfg(target_os = "macos")]
+        Some(pointer_device_event::Union::MacosGesture(gesture)) => {
+            // The native implementation validates fields again and cancels stale
+            // sequences if focus, connectivity, or the sending process is lost.
+            crate::platform::macos::post_remote_gesture(conn, gesture);
+        }
         Some(TouchEvent(evt)) => match &evt.union {
             Some(ScaleUpdate(_scale_evt)) => {
                 #[cfg(target_os = "windows")]
@@ -2238,6 +2244,33 @@ fn is_legacy_mode(evt: &KeyEvent) -> bool {
 
 pub fn handle_key_(evt: &KeyEvent) {
     if EXITING.load(Ordering::SeqCst) {
+        return;
+    }
+
+    // remotedisplay: explicit Caps Lock must not also trigger LED sync, which
+    // would inject a second Caps Lock and can undo an input-source switch.
+    #[cfg(target_os = "macos")]
+    if evt.mode.enum_value_or(KeyboardMode::Legacy) == KeyboardMode::Map
+        && matches!(evt.union, Some(key_event::Union::Chr(code)) if code == rdev::kVK_CapsLock as u32)
+    {
+        let caps_key = RdevKey::RawKey(RawKey::MacVirtualKeycode(rdev::kVK_CapsLock));
+        let event_type = if evt.down {
+            EventType::KeyPress(caps_key)
+        } else {
+            EventType::KeyRelease(caps_key)
+        };
+        unsafe {
+            let _lock = VIRTUAL_INPUT_MTX.lock();
+            if let Some(input) = VIRTUAL_INPUT_STATE.as_mut() {
+                match input.simulate(&event_type) {
+                    Ok(()) => {
+                        input.capslock_down =
+                            LockModesHandler::is_modifier_enabled(evt, ControlKey::CapsLock);
+                    }
+                    Err(err) => log::error!("Could not send Caps Lock: {:?}", err),
+                }
+            }
+        }
         return;
     }
 

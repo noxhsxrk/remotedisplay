@@ -16,6 +16,9 @@
 #include <atomic>
 #include <string>
 
+// remotedisplay: shared with the standalone gesture validation harness.
+#include "macos_gestures.mm"
+
 extern "C" bool CanUseNewApiForScreenCaptureCheck() {
     #ifdef NO_InputMonitoringAuthStatus
     return false;

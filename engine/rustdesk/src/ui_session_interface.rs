@@ -1147,6 +1147,20 @@ impl<T: InvokeUiSession> Session<T> {
         self.send_key_event(&key_event);
     }
 
+    // remotedisplay: gestures follow the same permission path as pointer input.
+    #[cfg(target_os = "macos")]
+    pub fn send_macos_gesture(&self, gesture: MacosGestureEvent) {
+        if self.peer_platform() != "Mac OS"
+            || !*self.server_keyboard_enabled.read().unwrap()
+            || self.lc.read().unwrap().view_only.v
+        {
+            return;
+        }
+        let mut evt = PointerDeviceEvent::new();
+        evt.set_macos_gesture(gesture);
+        send_pointer_device_event(evt, false, false, false, false, self);
+    }
+
     pub fn send_touch_scale(&self, scale: i32, alt: bool, ctrl: bool, shift: bool, command: bool) {
         let scale_evt = TouchScaleUpdate {
             scale,

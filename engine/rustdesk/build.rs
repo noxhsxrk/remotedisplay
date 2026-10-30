@@ -20,6 +20,7 @@ fn build_mac() {
     }
     b.flag("-std=c++17").file(file).compile("macos");
     println!("cargo:rerun-if-changed={}", file);
+    println!("cargo:rerun-if-changed=src/platform/macos_gestures.mm");
 }
 
 #[cfg(all(windows, feature = "inline"))]

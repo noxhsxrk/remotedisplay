@@ -195,6 +195,20 @@ class MainFlutterWindow: NSWindow {
     }
 
     public func setMethodHandler(registrar: FlutterPluginRegistrar) {
+        // A separate channel keeps the engine's existing host callbacks intact.
+        let gestureChannel = FlutterMethodChannel(name: "remotedisplay/gestures", binaryMessenger: registrar.messenger)
+        gestureChannel.setMethodCallHandler { call, result in
+            guard call.method == "setCapture",
+                  let window = registrar.view?.window,
+                  let args = call.arguments as? [String: Any],
+                  let enabled = args["enabled"] as? Bool else {
+                result(FlutterMethodNotImplemented)
+                return
+            }
+            result(RemoteGestureCapture.shared.configure(window: window, enabled: enabled) { packet in
+                gestureChannel.invokeMethod("onGesture", arguments: packet)
+            })
+        }
         let channel = FlutterMethodChannel(name: "org.rustdesk.rustdesk/host", binaryMessenger: registrar.messenger)
         channel.setMethodCallHandler({
             (call, result) -> Void in

@@ -1758,6 +1758,11 @@ impl Connection {
         }
         #[cfg(target_os = "macos")]
         {
+            // remotedisplay: older hosts must never cause local gestures to be swallowed.
+            platform_additions.insert(
+                "macos_gestures_v1".into(),
+                json!(crate::platform::macos::remote_gestures_supported()),
+            );
             platform_additions.insert(
                 "supported_privacy_mode_impl".into(),
                 json!(privacy_mode::get_supported_privacy_mode_impl()),

@@ -616,6 +616,15 @@ fn start_grab_loop() {
         let try_handle_keyboard = move |event: Event, key: Key, is_press: bool| -> Option<Event> {
             // fix #2211：CAPS LOCK don't work
             if key == Key::CapsLock || key == Key::NumLock {
+                // remotedisplay: macOS also uses Caps Lock as an input-source key.
+                // Keep the local lock state working, but forward the actual event too.
+                #[cfg(target_os = "macos")]
+                if key == Key::CapsLock
+                    && KEYBOARD_HOOKED.load(Ordering::SeqCst)
+                    && get_peer_platform().to_lowercase() == OS_LOWER_MACOS
+                {
+                    client::process_event(&get_keyboard_mode(), &event, None);
+                }
                 return Some(event);
             }
 
@@ -945,6 +954,14 @@ pub fn event_to_key_events(
 ) -> Vec<KeyEvent> {
     peer.retain(|c| !c.is_whitespace());
 
+    // remotedisplay: Legacy normally discards Caps Lock. Send it in every mode,
+    // without tracking it in TO_RELEASE: macOS reports lock-state transitions,
+    // so a synthetic release on focus loss would change the remote lock.
+    #[cfg(target_os = "macos")]
+    if let Some(key_event) = macos_caps_lock_event(&peer, event, _lock_modes) {
+        return vec![key_event];
+    }
+
     update_modifiers_state(event);
 
     match event.event_type {
@@ -988,6 +1005,90 @@ pub fn event_to_key_events(
         }
     }
     key_events
+}
+
+#[cfg(target_os = "macos")]
+fn macos_caps_lock_event(peer: &str, event: &Event, lock_modes: Option<i32>) -> Option<KeyEvent> {
+    if peer != OS_LOWER_MACOS {
+        return None;
+    }
+    let down = match event.event_type {
+        EventType::KeyPress(Key::CapsLock) => true,
+        EventType::KeyRelease(Key::CapsLock) => false,
+        _ => return None,
+    };
+    let mut key_event = KeyEvent::new();
+    key_event.mode = KeyboardMode::Map.into();
+    key_event.down = down;
+    key_event.set_chr(rdev::kVK_CapsLock as _);
+    if let Some(lock_modes) = lock_modes {
+        parse_add_lock_modes_modifiers(&mut key_event, lock_modes, false, true);
+    } else {
+        add_lock_modes_modifiers(&mut key_event, false, true);
+    }
+    Some(key_event)
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod caps_lock_tests {
+    use super::*;
+
+    fn event(event_type: EventType) -> Event {
+        Event {
+            event_type,
+            time: std::time::SystemTime::now(),
+            unicode: None,
+            platform_code: rdev::kVK_CapsLock as _,
+            position_code: 0,
+            usb_hid: 0,
+            extra_data: 0,
+        }
+    }
+
+    #[test]
+    fn caps_lock_is_sent_immediately_in_every_mode() {
+        for mode in [
+            KeyboardMode::Map,
+            KeyboardMode::Legacy,
+            KeyboardMode::Translate,
+        ] {
+            for (event_type, down) in [
+                (EventType::KeyPress(Key::CapsLock), true),
+                (EventType::KeyRelease(Key::CapsLock), false),
+            ] {
+                // A language-switch tap need not enable the uppercase lock.
+                let events = event_to_key_events(" macos ".into(), &event(event_type), mode, Some(0));
+                assert_eq!(events.len(), 1);
+                assert_eq!(events[0].mode.enum_value().unwrap(), KeyboardMode::Map);
+                assert_eq!(events[0].chr(), rdev::kVK_CapsLock as u32);
+                assert_eq!(events[0].down, down);
+                assert!(events[0].modifiers.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn caps_lock_keeps_uppercase_state_separate_from_event_direction() {
+        for event_type in [
+            EventType::KeyPress(Key::CapsLock),
+            EventType::KeyRelease(Key::CapsLock),
+        ] {
+            let evt = macos_caps_lock_event("macos", &event(event_type), Some(1 << 1)).unwrap();
+            assert_eq!(evt.modifiers, vec![ControlKey::CapsLock.into()]);
+        }
+    }
+
+    #[test]
+    fn caps_lock_override_does_not_affect_other_peers_or_keys() {
+        let caps = event(EventType::KeyPress(Key::CapsLock));
+        for peer in ["windows", "linux", "android"] {
+            assert!(macos_caps_lock_event(peer, &caps, Some(0)).is_none());
+        }
+        for key in [Key::NumLock, Key::KeyA, Key::ShiftLeft] {
+            let evt = event(EventType::KeyPress(key));
+            assert!(macos_caps_lock_event("macos", &evt, Some(0)).is_none());
+        }
+    }
 }
 
 pub fn send_key_event(key_event: &KeyEvent) {
